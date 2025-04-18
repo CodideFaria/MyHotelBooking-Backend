@@ -93,6 +93,5 @@ class PromotionsController:
             'discount_percentage': promotion.discount_percentage,
             'start_date': str(promotion.start_date),
             'end_date': str(promotion.end_date),
-            'is_active': promotion.is_active,
-            'hotel': promotion.hotel
+            'is_active': promotion.is_active
         }

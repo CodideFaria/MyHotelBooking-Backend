@@ -1,5 +1,4 @@
 import tornado.web
-import tornado.websocket
 
 from orm.controllers.controller_users import UsersController
 controller = UsersController()
@@ -86,3 +85,6 @@ class AuthenticatedBaseHandler(BaseHandler):
             self.set_status(401)
             self.write({"status": "error", "message": "Token is invalid"})
             return
+
+        # Save user details in the request object for later use
+        self.user = user

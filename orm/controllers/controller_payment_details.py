@@ -4,7 +4,7 @@ from orm.models.model_payment_details import PaymentDetails
 from orm.db_init import session_scope
 from sqlalchemy import desc
 
-class PaymentDetailssController:
+class PaymentDetailsController:
     def add_payment_details(self, card_number, expiry_date, cvv, card_type):
         with session_scope() as session:
             payment_details_id = uuid.uuid4()

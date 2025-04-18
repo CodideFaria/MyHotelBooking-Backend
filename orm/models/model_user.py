@@ -19,6 +19,7 @@ class User(Base):
     payment_details_id = Column(UUID, ForeignKey('payment_details.id'))
     email_verified = Column(Boolean, default=False)
     phone_number_verified = Column(Boolean, default=False)
+    admin = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
 

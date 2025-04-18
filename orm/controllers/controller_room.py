@@ -99,7 +99,5 @@ class RoomsController:
             'room_type': room.room_type,
             'capacity': room.capacity,
             'price': room.price,
-            'is_available': room.is_available,
-            'hotel': room.hotel,
-            'reservations': room.reservations
+            'is_available': room.is_available
         }

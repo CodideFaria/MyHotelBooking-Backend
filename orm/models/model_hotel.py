@@ -10,6 +10,7 @@ class Hotel(Base):
     id = Column(UUID, primary_key=True)
     name = Column(String(255), nullable=False)
     description = Column(Text)
+    images = Column(JSON)
     address = Column(String(200))
     city = Column(String(100))
     country = Column(String(100))

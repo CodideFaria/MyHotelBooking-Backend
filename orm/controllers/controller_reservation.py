@@ -4,6 +4,9 @@ from orm.models.model_reservation import Reservation
 from orm.db_init import session_scope
 from sqlalchemy import desc
 
+from orm.controllers.controller_room import RoomsController
+room_controller = RoomsController()
+
 class ReservationsController:
     def add_reservation(self, user_id, hotel_id, room_id, check_in, check_out, status, total_price):
         with session_scope() as session:
@@ -95,6 +98,10 @@ class ReservationsController:
             return True
 
     def reservation_format(self, reservation):
+        room = None
+        if reservation.room:
+            room = room_controller.room_format(reservation.room)
+
         return {
             'id': str(reservation.id),
             'check_in': str(reservation.check_in),
@@ -103,7 +110,5 @@ class ReservationsController:
             'total_price': reservation.total_price,
             'created_at': str(reservation.created_at),
             'updated_at': str(reservation.updated_at),
-            'user': reservation.user,
-            'hotel': reservation.hotel,
-            'room': reservation.room
+            'room': room
         }

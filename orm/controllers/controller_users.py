@@ -8,6 +8,9 @@ from orm.models.model_user import User
 from orm.db_init import session_scope
 from sqlalchemy import desc
 
+from orm.controllers.controller_reservation import ReservationsController
+reservation_controller = ReservationsController()
+
 def generate_auth_token(user_id, email):
     # Get current UTC time
     now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -122,7 +125,7 @@ class UsersController:
 
                 return None if user is None else self.user_format(user)
 
-    def update_user(self, id, email=None, password=None, first_name=None, last_name=None, phone_number=None, date_of_birth=None, payment_details_id=None, email_verified=None, phone_number_verified=None):
+    def update_user(self, id, email=None, password=None, first_name=None, last_name=None, phone_number=None, date_of_birth=None, payment_details_id=None, email_verified=None, phone_number_verified=None, admin=None):
         with session_scope() as session:
             user = session.query(User).filter(User.id == id).first()
             if user is None:
@@ -145,6 +148,8 @@ class UsersController:
                 user.email_verified = email_verified
             if phone_number_verified is not None:
                 user.phone_number_verified = phone_number_verified
+            if admin is not None:
+                user.admin = admin
             return self.user_format(user)
 
     def delete_user(self, id):
@@ -156,6 +161,10 @@ class UsersController:
             return True
 
     def user_format(self, user):
+        reservations = []
+        for reservation in user.reservations:
+            reservations.append(reservation_controller.reservation_format(reservation))
+
         return {
             'id': str(user.id),
             'first_name': user.first_name,
@@ -165,9 +174,10 @@ class UsersController:
             'date_of_birth': str(user.date_of_birth) if user.date_of_birth else None,
             'email_verified': user.email_verified,
             'phone_number_verified': user.phone_number_verified,
+            'admin': user.admin,
             'created_at': str(user.created_at),
             'updated_at': str(user.updated_at),
             'payment_details': user.payment_details,
-            'reservations': user.reservations,
+            'reservations': reservations,
             'reviews': user.reviews
         }

@@ -4,11 +4,20 @@ from orm.models.model_hotel import Hotel
 from orm.db_init import session_scope
 from sqlalchemy import desc
 
+from orm.controllers.controller_room import RoomsController
+from orm.controllers.controller_reservation import ReservationsController
+from orm.controllers.controller_review import ReviewsController
+from orm.controllers.controller_promotion import PromotionsController
+room_controller = RoomsController()
+reservation_controller = ReservationsController()
+review_controller = ReviewsController()
+promotion_controller = PromotionsController()
+
 class HotelsController:
-    def add_hotel(self, name, description, address, city, country, phone, email, features):
+    def add_hotel(self, name, description, images, address, city, country, phone, email, features):
         with session_scope() as session:
             hotel_id = uuid.uuid4()
-            new_hotel = Hotel(id=hotel_id, name=name, description=description, address=address, city=city, country=country, phone=phone, email=email, features=features)
+            new_hotel = Hotel(id=hotel_id, name=name, description=description, images=images, address=address, city=city, country=country, phone=phone, email=email, features=features)
             session.add(new_hotel)
 
         return self.get_hotels_by_filters(id=hotel_id)
@@ -62,7 +71,7 @@ class HotelsController:
 
                 return None if hotel is None else self.hotel_format(hotel)
 
-    def update_hotel(self, id, name=None, description=None, address=None, city=None, country=None, phone=None, email=None, features=None):
+    def update_hotel(self, id, name=None, description=None, images=None, address=None, city=None, country=None, phone=None, email=None, features=None):
         with session_scope() as session:
             hotel = session.query(Hotel).filter(Hotel.id == id).first()
             if hotel is None:
@@ -71,6 +80,8 @@ class HotelsController:
                 hotel.name = name
             if description is not None:
                 hotel.description = description
+            if images is not None:
+                hotel.images = images
             if address is not None:
                 hotel.address = address
             if city is not None:
@@ -94,10 +105,31 @@ class HotelsController:
             return True
 
     def hotel_format(self, hotel):
+        rooms = []
+        if hotel.rooms:
+            for room in hotel.rooms:
+                rooms.append(room_controller.room_format(room))
+
+        reservations = []
+        if hotel.reservations:
+            for reservation in hotel.reservations:
+                reservations.append(reservation_controller.reservation_format(reservation))
+
+        reviews = []
+        if hotel.reviews:
+            for review in hotel.reviews:
+                reviews.append(review_controller.review_format(review))
+
+        promotions = []
+        if hotel.promotions:
+            for promotion in hotel.promotions:
+                promotions.append(promotion_controller.promotion_format(promotion))
+
         return {
             'id': str(hotel.id),
             'name': hotel.name,
             'description': hotel.description,
+            'images': hotel.images,
             'address': hotel.address,
             'city': hotel.city,
             'country': hotel.country,
@@ -106,8 +138,8 @@ class HotelsController:
             'features': hotel.features,
             'created_at': str(hotel.created_at),
             'updated_at': str(hotel.updated_at),
-            'rooms': hotel.rooms,
-            'reservations': hotel.reservations,
-            'reviews': hotel.reviews,
-            'promotions': hotel.promotions
+            'rooms': rooms,
+            'reservations': reservations,
+            'reviews': reviews,
+            'promotions': promotions
         }

@@ -41,6 +41,7 @@ class UsersHandler(AuthenticatedBaseHandler):
         date_of_birth = body.get('date_of_birth', None)
         email_verified = body.get('email_verified', None)
         phone_number_verified = body.get('phone_number_verified', None)
+        admin = body.get('admin', None)
 
         if not user_id:
             self.write({"status": "error", "message": "user_id is required"})
@@ -57,18 +58,20 @@ class UsersHandler(AuthenticatedBaseHandler):
                 self.write({"status": "error", "message": "Invalid date format. Please use YYYY-MM-DD"})
                 return
 
-        # Convert email_verified and phone_number_verified to boolean
+        # Convert email_verified, phone_number_verified and admin to boolean
         email_verified = email_verified.lower() == 'true' if email_verified else None
         phone_number_verified = phone_number_verified.lower() == 'true' if phone_number_verified else None
+        admin = admin.lower() == 'true' if admin else None
 
         # Check if email already exists on another user
-        exists = controller.get_users_by_filters(email=email)
-        if exists and exists['id'] != user_id:
-            self.write({"status": "error", "message": "Email already in use"})
-            return
+        if email is not None:
+            exists = controller.get_users_by_filters(email=email)
+            if exists and exists['id'] != user_id:
+                self.write({"status": "error", "message": "Email already in use"})
+                return
 
         try:
-            user = controller.update_user(user_id, email=email, first_name=first_name, last_name=last_name, phone_number=phone_number, date_of_birth=date_of_birth, email_verified=email_verified, phone_number_verified=phone_number_verified)
+            user = controller.update_user(user_id, email=email, first_name=first_name, last_name=last_name, phone_number=phone_number, date_of_birth=date_of_birth, email_verified=email_verified, phone_number_verified=phone_number_verified, admin=admin)
             if user is None:
                 self.write({"status": "fail", "message": f"User not found with id {user_id}"})
                 return
@@ -83,13 +86,13 @@ class UsersHandler(AuthenticatedBaseHandler):
         all_filter = self.get_query_argument('all', False)
         filters = {
             'id': self.get_query_argument('id', None),
-            'username': self.get_query_argument('username', None),
-            'role': self.get_query_argument('role', None),
             'email': self.get_query_argument('email', None),
-            'general_token': self.get_query_argument('general_token', None),
-            'isActive': self.get_query_argument('isActive', None),
-            'date_joined': self.get_query_argument('date_joined', None),
-            'search': self.get_query_argument('search', None),
+            'first_name': self.get_query_argument('first_name', None),
+            'last_name': self.get_query_argument('last_name', None),
+            'phone_number': self.get_query_argument('phone_number', None),
+            'date_of_birth': self.get_query_argument('date_of_birth', None),
+            'email_verified': self.get_query_argument('email_verified', None),
+            'phone_number_verified': self.get_query_argument('phone_number_verified', None),
             'all': all_filter,
         }
 
