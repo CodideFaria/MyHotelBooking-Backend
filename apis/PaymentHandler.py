@@ -3,33 +3,38 @@ import stripe
 import asyncio
 
 from concurrent.futures import ThreadPoolExecutor
-from apis.BaseHandler import AuthenticatedBaseHandler, BaseHandler
-from datetime import datetime
+from apis.BaseHandler import AuthenticatedBaseHandler
 from decouple import config
+from decimal import Decimal
 
-from orm.controllers.controller_payment_details import PaymentDetailsController
-controller = PaymentDetailsController()
+from orm.controllers.controller_users import UsersController
+from orm.controllers.controller_hotel import HotelsController
+users_controller = UsersController()
+hotel_controller = HotelsController()
 
 stripe.api_key = config("STRIPE_SECRET_KEY")
 EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 
-class CreateCheckoutSessionHandler(BaseHandler):
+class CreateCheckoutSessionHandler(AuthenticatedBaseHandler):
     async def post(self):
-        data = {
-            "amount": 520,  # euros
-            "currency": "eur",
-            "hotel_name": "Brussels Marriott Hotel Grand Place",
-            "room_type": "Deluxe Guest room",
-            "booking_id": "bk_1234",
-            "user_id": "usr_1234",
-            "quantity": 1,
-            "email": "cd80ocd@bolton.ac.uk",
-            "nights": 4,
-        }
+        # Simulate delay of 3 seconds
+        await asyncio.sleep(3)
 
-        data["amount"] = int(data["amount"] * 100)
-        description = f"{data['room_type']} ({data['nights']} night stay)"
+        # Get booking details
+        body =  json.loads(self.request.body.decode('utf-8'))
+        booking_id = body.get('bookingId', None)
+        amount = body.get('amount', None)
+        hotel_id = body.get('hotel_id', None)
+        hotel = hotel_controller.get_hotels_by_filters(id=hotel_id)
+        hotel_name = hotel['name']
+        room_type = body.get('room_type', None)
+        email = body.get('email', None)
+        nights = body.get('nights', None)
+
+        amount_decimal = Decimal(str(amount))
+        amount_cents = int((amount_decimal * 100).to_integral_value())
+        description = f"{room_type} ({nights} night stay)"
 
         def _create_session():
             return stripe.checkout.Session.create(
@@ -37,65 +42,25 @@ class CreateCheckoutSessionHandler(BaseHandler):
                 payment_method_types=["card"],
                 submit_type="book",
                 line_items=[{
-                    "quantity": data["quantity"],
+                    "quantity": 1,
                     "price_data": {
-                        "unit_amount": data["amount"],
-                        "currency": data["currency"],
+                        "unit_amount": amount_cents,
+                        "currency": "eur",
                         "product_data": {
-                            "name": data["hotel_name"],
+                            "name": hotel_name,
                             "description": description,
                         },
                     },
                 }],
                 custom_text={
-                    "submit": {"message": f"Confirm & pay €{data['amount']/100:.2f} to reserver your stay"},
+                    "submit": {
+                        "message": f"Confirm & pay €{amount_decimal:.2f} to reserve your stay"
+                    },
                 },
-                metadata={
-                    "booking_id": data["booking_id"],
-                    "user_id": data["user_id"],
-                    "nights": data["nights"],
-                },
-                customer_email=data["email"],
-                success_url="http://localhost:3000/checkout/success?session_id={CHECKOUT_SESSION_ID}",
-                cancel_url="http://localhost:3000/checkout/cancelled",
+                customer_email=email,
+                success_url=f"http://localhost:3000/booking-confirmation?token={booking_id}",
+                cancel_url=f"http://localhost:3000/hotel/{hotel_id}",
             )
 
         session = await asyncio.get_event_loop().run_in_executor(EXECUTOR, _create_session)
         self.write({"url": session.url})
-
-
-class PaymentSuccessHandler(AuthenticatedBaseHandler):
-    async def get(self):
-        session_id = self.get_query_argument("session_id")
-        # Retrieve the session to confirm payment
-        session = stripe.checkout.Session.retrieve(session_id)
-        payment_intent = stripe.PaymentIntent.retrieve(session.payment_intent)
-
-        if payment_intent.status == "succeeded":
-            # Save to your DB as needed
-            self.write({"status": "success", "paymentIntent": session.payment_intent})
-        else:
-            self.write({"status": "failed"})
-
-
-class PaymentConfirmationHandler(AuthenticatedBaseHandler):
-    async def post(self):
-        # Simulate delay of 6 seconds
-        await asyncio.sleep(6)
-
-        # Get payment details
-        body =  json.loads(self.request.body.decode('utf-8'))
-        card_number = body.get('cardNumber', None)
-        expiry_date = body.get('expiry', None)
-        cvv = body.get('cvc', None)
-
-        # Convert expiry_date to the correct format if needed
-        expiry_date = datetime.strptime(expiry_date, '%m/%y').date()
-
-        # Save payment details
-        new_payment = controller.add_payment_details(card_number, expiry_date, cvv, 'Card')
-        if new_payment:
-            self.write({"status": "success", "paid": True})
-        else:
-            self.write({"status": "success", "paid": False})
-

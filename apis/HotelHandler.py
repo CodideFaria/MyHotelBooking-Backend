@@ -3,14 +3,14 @@ import json
 from apis.BaseHandler import BaseHandler, AuthenticatedBaseHandler, calculate_pagination
 from datetime import datetime
 
-from orm.temp_data import hotels_data
-
 from orm.controllers.controller_hotel import HotelsController
 from orm.controllers.controller_room import RoomsController
 from orm.controllers.controller_reservation import ReservationsController
+from orm.controllers.controller_review import ReviewsController
 controller = HotelsController()
 rooms_controller = RoomsController()
 reservations_controller = ReservationsController()
+review_controller = ReviewsController()
 
 
 class HotelBookHandler(AuthenticatedBaseHandler):
@@ -32,12 +32,32 @@ class HotelBookHandler(AuthenticatedBaseHandler):
             self.write({"status": "fail", "message": "Invalid date format"})
             return
 
-        new_reservation = reservations_controller.add_reservation(self.user['id'], hotel_id, room_id, check_in, check_out, 'booked', float(total_price))
+        new_reservation = reservations_controller.add_reservation(self.user['id'], hotel_id, room_id, check_in, check_out, 'pending payment', float(total_price))
         if not new_reservation:
             self.set_status(400)
             self.write({"status": "fail", "message": "Something went wrong, please try again"})
         else:
             self.write({"status": "success", "data": new_reservation})
+
+
+class HotelUpdateHandler(AuthenticatedBaseHandler):
+    def get(self, booking_id):
+        success = reservations_controller.update_reservation(booking_id, status='booked')
+        if not success:
+            self.set_status(400)
+            self.write({"status": "fail", "message": "Something went wrong, please try again"})
+        else:
+            self.write({"status": "success", "message": "Booking updated successfully"})
+
+
+class HotelCancelHandler(AuthenticatedBaseHandler):
+    def delete(self, hotel_id):
+        success = reservations_controller.update_reservation(hotel_id, status='cancelled')
+        if not success:
+            self.set_status(400)
+            self.write({"status": "fail", "message": "Something went wrong, please try again"})
+        else:
+            self.write({"status": "success", "message": "Booking cancelled successfully"})
 
 
 class HotelsHandler(BaseHandler):
@@ -66,7 +86,27 @@ class HotelsHandler(BaseHandler):
         price_filter = filters.get("priceFilter", None)
         sort_by_filter = next((f for f in advanced_filters if f.get("sortBy")), None)
 
-        page_size = 6
+        page_size = 10
+
+        def add_average_price(hotels):
+            """
+            Mutates each hotel dict in-place to set hotel['price'] to the
+            average of its rooms’ prices (or 0 if none).
+            Assumes each hotel has a 'rooms' list and each room has a 'price' field.
+            """
+            for hotel in hotels:
+                rooms = hotel.get("rooms", [])
+                prices = []
+                for room in rooms:
+                    try:
+                        # if room['price'] is “1,234.56” or a number
+                        p = room.get("price", 0)
+                        p = float(str(p).replace(",", ""))
+                        prices.append(p)
+                    except Exception:
+                        continue
+                hotel["price"] = sum(prices) / len(prices) if prices else 0.0
+            return hotels
 
         # If extra filters (star ratings or price) exist, get all results for the city then filter in memory;
         # otherwise, delegate pagination directly to the SQL query.
@@ -74,6 +114,8 @@ class HotelsHandler(BaseHandler):
             # Retrieve all hotels matching the basic SQL filter (city)
             result = controller.get_hotels_by_filters(city=city, all=True, start_and_end=(0, None))
             hotels_list = result.get("hotels", []) if result else []
+
+            add_average_price(hotels_list)
 
             # Apply extra filters (e.g. star ratings and price range) in memory
             def extra_filter(hotel):
@@ -95,7 +137,7 @@ class HotelsHandler(BaseHandler):
                     try:
                         start_price = float(price_filter.get("start", 0))
                         end_price = float(price_filter.get("end", float('inf')))
-                        price_ok = start_price <= hotel_price <= end_price
+                        price_ok = start_price <= hotel["price"] <= end_price
                     except Exception:
                         price_ok = True
 
@@ -129,6 +171,8 @@ class HotelsHandler(BaseHandler):
             else:
                 total_results = 0
                 paginated = []
+
+            add_average_price(paginated)
 
             # Apply sorting to the paginated list if requested
             if sort_by_filter and paginated:
@@ -218,72 +262,48 @@ class HotelBookingEnquiryHandler(BaseHandler):
 
 class HotelReviewsHandler(BaseHandler):
     def get(self, hotel_id):
-        # MirageJS uses a hard-coded hotelId (71222) for reviews.
-        # Here we mimic that by always using the hotel with hotelCode "71222".
-        hotel = next((h for h in hotels_data if str(h.get("hotelCode")) == "71222"), None)
-        if not hotel or "reviews" not in hotel:
-            self.set_status(404)
-            self.write(json.dumps({"errors": ["Hotel or reviews not found"]}))
-            return
+        hotel = controller.get_hotels_by_filters(id=hotel_id)
+        if hotel:
+            hotel_reviews = hotel.get('reviews', [])
 
-        # Get currentPage from query parameter
-        current_page = self.get_query_argument("currentPage", "1")
-        try:
-            current_page = int(current_page)
-        except ValueError:
-            current_page = 1
+            # Calculate average rating
+            average_rating = sum(review['rating'] for review in hotel_reviews) / len(hotel_reviews) if hotel_reviews else 0
 
-        reviews = hotel["reviews"].get("data", [])
-        total_reviews = len(reviews)
-        total_ratings = sum(review.get("rating", 0) for review in reviews)
-        average_rating = round(total_ratings / total_reviews, 1) if total_reviews > 0 else 0
+            # Calcaulte star rating counts
+            star_counts = {i: 0 for i in range(1, 6)}
+            for review in hotel_reviews:
+                star_counts[review['rating']] += 1
 
-        # Count star ratings (floored)
-        initial_counts = {str(i): 0 for i in range(1, 6)}
-        for review in reviews:
-            rating_key = str(int(review.get("rating", 0)))
-            if rating_key in initial_counts:
-                initial_counts[rating_key] += 1
+            # Sort reviews by date
+            hotel_reviews.sort(key=lambda x: x['created_at'], reverse=True)
 
-        metadata = {
-            "totalReviews": total_reviews,
-            "averageRating": f"{average_rating:.1f}",
-            "starCounts": initial_counts,
-        }
-
-        # Pagination: pageSize = 5
-        page_size = 5
-        total_pages = (total_reviews - 1) // page_size + 1
-        paging = {
-            "currentPage": current_page,
-            "totalPages": total_pages,
-            "pageSize": page_size,
-        }
-        start = (current_page - 1) * page_size
-        end = current_page * page_size
-        paginated_reviews = reviews[start:end]
-
-        response = {
-            "errors": [],
-            "data": {
-                "elements": paginated_reviews
-            },
-            "metadata": metadata,
-            "paging": paging,
-        }
-        self.write(json.dumps(response))
-
-
-class AddReviewHandler(BaseHandler):
-    async def put(self):
-        # In a real-world implementation, you'd extract and store review details.
-        response = {
-            "errors": [],
-            "data": {
-                "status": "Review added successfully"
+            data = {
+                "reviews": hotel_reviews,
+                "totalReviews": len(hotel_reviews),
+                "averageRating": average_rating,
+                "starCounts": star_counts,
             }
-        }
-        self.write(json.dumps(response))
+            self.write({'status': 'success', 'data': data})
+        else:
+            self.set_status(404)
+            self.write({'status': 'fail', 'message': 'Hotel not found'})
+
+        return
+
+
+class AddReviewHandler(AuthenticatedBaseHandler):
+    async def post(self):
+        body = json.loads(self.request.body.decode('utf-8'))
+        rating = body.get("rating", None)
+        review = body.get("review", None)
+        hotel_id = body.get("hotel_id", None)
+
+        new_review = review_controller.add_review(self.user['id'], hotel_id, rating, review)
+        if new_review:
+            self.write({'status': 'success', 'data': new_review})
+        else:
+            self.set_status(400)
+            self.write({'status': 'fail', 'message': 'Failed to add review'})
 
 
 class NearbyHotelsHandler(BaseHandler):

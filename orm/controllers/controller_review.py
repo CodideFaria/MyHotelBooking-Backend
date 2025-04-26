@@ -4,6 +4,9 @@ from orm.models.model_review import Review
 from orm.db_init import session_scope
 from sqlalchemy import desc
 
+from orm.controllers.controller_users import UsersController
+user_controller = UsersController()
+
 class ReviewsController:
     def add_review(self, user_id, hotel_id, rating, comment):
         with session_scope() as session:
@@ -82,6 +85,5 @@ class ReviewsController:
             'rating': review.rating,
             'comment': review.comment,
             'created_at': str(review.created_at),
-            'user': review.user,
-            'hotel': review.hotel
+            'user': user_controller.user_format(review.user)
         }

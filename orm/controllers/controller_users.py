@@ -125,7 +125,7 @@ class UsersController:
 
                 return None if user is None else self.user_format(user)
 
-    def update_user(self, id, email=None, password=None, first_name=None, last_name=None, phone_number=None, date_of_birth=None, payment_details_id=None, email_verified=None, phone_number_verified=None, admin=None):
+    def update_user(self, id, email=None, password=None, first_name=None, last_name=None, phone_number=None, date_of_birth=None, email_verified=None, phone_number_verified=None, admin=None):
         with session_scope() as session:
             user = session.query(User).filter(User.id == id).first()
             if user is None:
@@ -142,8 +142,6 @@ class UsersController:
                 user.phone_number = phone_number
             if date_of_birth is not None:
                 user.date_of_birth = date_of_birth
-            if payment_details_id is not None:
-                user.payment_details_id = payment_details_id
             if email_verified is not None:
                 user.email_verified = email_verified
             if phone_number_verified is not None:
@@ -177,7 +175,5 @@ class UsersController:
             'admin': user.admin,
             'created_at': str(user.created_at),
             'updated_at': str(user.updated_at),
-            'payment_details': user.payment_details,
-            'reservations': reservations,
-            'reviews': user.reviews
+            'reservations': reservations
         }

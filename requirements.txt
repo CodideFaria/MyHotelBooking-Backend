@@ -4,3 +4,4 @@ python-decouple
 psycopg2
 postmarker
 PyJWT
+python-dateutil

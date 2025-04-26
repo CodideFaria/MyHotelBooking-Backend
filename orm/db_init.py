@@ -6,7 +6,6 @@ from .base import Base
 
 # DONT REMOVE BELOW IT IS BEING USED TO POINT TO MODELS TO CREATE TABLES!!!
 from orm.models.model_hotel import Hotel
-from orm.models.model_payment_details import PaymentDetails
 from orm.models.model_promotion import Promotion
 from orm.models.model_reservation import Reservation
 from orm.models.model_review import Review

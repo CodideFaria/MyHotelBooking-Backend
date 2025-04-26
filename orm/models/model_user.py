@@ -16,7 +16,6 @@ class User(Base):
     date_of_birth = Column(Date)
     token = Column(Text)
     token_expires = Column(DateTime)
-    payment_details_id = Column(UUID, ForeignKey('payment_details.id'))
     email_verified = Column(Boolean, default=False)
     phone_number_verified = Column(Boolean, default=False)
     admin = Column(Boolean, default=False)
@@ -24,6 +23,5 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.now(timezone.utc), onupdate=datetime.now(timezone.utc))
 
     # Relationships to reservations and reviews
-    payment_details = relationship("PaymentDetails", back_populates="user")
     reservations = relationship("Reservation", back_populates="user")
     reviews = relationship("Review", back_populates="user")

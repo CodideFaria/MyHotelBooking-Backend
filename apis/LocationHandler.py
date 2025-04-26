@@ -1,9 +1,5 @@
-import json
-
-from apis.BaseHandler import BaseHandler, AuthenticatedBaseHandler
+from apis.BaseHandler import BaseHandler
 from collections import Counter
-
-from orm.temp_data import popular_destinations, available_cities
 
 from orm.controllers.controller_hotel import HotelsController
 controller = HotelsController()
