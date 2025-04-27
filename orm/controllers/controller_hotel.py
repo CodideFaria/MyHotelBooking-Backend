@@ -2,7 +2,7 @@ import uuid
 
 from orm.models.model_hotel import Hotel
 from orm.db_init import session_scope
-from sqlalchemy import desc
+from sqlalchemy import desc, func
 
 from orm.controllers.controller_room import RoomsController
 from orm.controllers.controller_reservation import ReservationsController
@@ -34,22 +34,22 @@ class HotelsController:
                 query = query.filter(Hotel.id == id)
 
             if name:
-                query = query.filter(Hotel.name == name)
+                query = query.filter(func.lower(Hotel.name) == name.lower())
 
             if address:
-                query = query.filter(Hotel.address == address)
+                query = query.filter(func.lower(Hotel.address) == address.lower())
 
             if city:
-                query = query.filter(Hotel.city == city)
+                query = query.filter(func.lower(Hotel.city) == city.lower())
 
             if country:
-                query = query.filter(Hotel.country == country)
+                query = query.filter(func.lower(Hotel.country) == country.lower())
 
             if phone:
                 query = query.filter(Hotel.phone == phone)
 
             if email:
-                query = query.filter(Hotel.email == email)
+                query = query.filter(func.lower(Hotel.email) == email.lower())
 
             # Get all or just one
             if all:

@@ -61,6 +61,30 @@ class HotelCancelHandler(AuthenticatedBaseHandler):
 
 
 class HotelsHandler(BaseHandler):
+    def star_filter(self, hotel, star_ratings):
+        # Get reviews
+        hotel_reviews = hotel.get('reviews', [])
+
+        # Calculate average rating
+        average_rating = sum(review['rating'] for review in hotel_reviews) / len(hotel_reviews) if hotel_reviews else 0
+
+        rating_ok = True
+        if star_ratings:
+            rating_ok = any(abs(average_rating - float(r)) <= 0.5 for r in star_ratings)
+
+        return rating_ok
+
+    def add_rating_and_price(self, hotels):
+        for hotel in hotels:
+            lowest_room_price = min(room['price'] for room in hotel['rooms'])
+
+            total_reviews = len(hotel['reviews'])
+            average_rating = sum(review['rating'] for review in hotel['reviews']) / total_reviews if total_reviews > 0 else 0
+
+            hotel['price'] = lowest_room_price
+            hotel['ratings'] = average_rating
+        return hotels
+
     def get(self):
         # Parse pagination and filtering parameters from query string
         current_page = self.get_query_argument("currentPage", "1")
@@ -70,119 +94,65 @@ class HotelsHandler(BaseHandler):
             current_page = 1
 
         filters_str = self.get_query_argument("filters", "{}")
-        advanced_filters_str = self.get_query_argument("advancedFilters", "[]")
         try:
             filters = json.loads(filters_str)
         except Exception:
             filters = {}
-        try:
-            advanced_filters = json.loads(advanced_filters_str)
-        except Exception:
-            advanced_filters = []
+
+        sort_by_filter = self.get_query_argument("sortBy", "default")
 
         # Extract basic filter (SQL-supported field) and extra filters
         city = filters.get("city", None)
+        city = None if city == "" else city # Fallback incase string is empty
         star_ratings = filters.get("star_ratings", [])
-        price_filter = filters.get("priceFilter", None)
-        sort_by_filter = next((f for f in advanced_filters if f.get("sortBy")), None)
+        room_type = filters.get("room_type", [])
 
         page_size = 10
 
-        def add_average_price(hotels):
-            """
-            Mutates each hotel dict in-place to set hotel['price'] to the
-            average of its rooms’ prices (or 0 if none).
-            Assumes each hotel has a 'rooms' list and each room has a 'price' field.
-            """
-            for hotel in hotels:
-                rooms = hotel.get("rooms", [])
-                prices = []
-                for room in rooms:
-                    try:
-                        # if room['price'] is “1,234.56” or a number
-                        p = room.get("price", 0)
-                        p = float(str(p).replace(",", ""))
-                        prices.append(p)
-                    except Exception:
-                        continue
-                hotel["price"] = sum(prices) / len(prices) if prices else 0.0
-            return hotels
+        start_offset = (current_page - 1) * page_size
+        end_offset = current_page * page_size
+        result = controller.get_hotels_by_filters(city=city, all=True, start_and_end=(start_offset, end_offset))
+        if result:
+            total_results = result.get("amount", 0)
+            paginated = result.get("hotels", [])
+        else:
+            total_results = 0
+            paginated = []
 
-        # If extra filters (star ratings or price) exist, get all results for the city then filter in memory;
-        # otherwise, delegate pagination directly to the SQL query.
-        if star_ratings or price_filter:
-            # Retrieve all hotels matching the basic SQL filter (city)
-            result = controller.get_hotels_by_filters(city=city, all=True, start_and_end=(0, None))
-            hotels_list = result.get("hotels", []) if result else []
+        # Add ratings and price to each hotel
+        paginated = self.add_rating_and_price(paginated)
 
-            add_average_price(hotels_list)
-
-            # Apply extra filters (e.g. star ratings and price range) in memory
-            def extra_filter(hotel):
-                try:
-                    hotel_rating = float(hotel.get("ratings", 0))
-                except Exception:
-                    hotel_rating = 0
-                try:
-                    hotel_price = float(hotel.get("price").replace(",", ""))
-                except Exception:
-                    hotel_price = 0
-
-                rating_ok = True
-                if star_ratings:
-                    rating_ok = any(abs(hotel_rating - float(r)) <= 0.5 for r in star_ratings)
-
-                price_ok = True
-                if price_filter:
-                    try:
-                        start_price = float(price_filter.get("start", 0))
-                        end_price = float(price_filter.get("end", float('inf')))
-                        price_ok = start_price <= hotel["price"] <= end_price
-                    except Exception:
-                        price_ok = True
-
-                return rating_ok and price_ok
-
-            filtered_hotels = [h for h in hotels_list if extra_filter(h)]
-
-            # Apply in-memory sorting if required
-            if sort_by_filter:
-                sort_type = sort_by_filter.get("sortBy")
-                if sort_type == "priceLowToHigh":
-                    filtered_hotels.sort(key=lambda h: float(h.get("price").replace(",", "")))
-                elif sort_type == "priceHighToLow":
-                    filtered_hotels.sort(key=lambda h: float(h.get("price").replace(",", "")), reverse=True)
+        # Apply star ratings filter
+        if star_ratings:
+            # Apply star ratings filter
+            filtered_hotels = [h for h in paginated if self.star_filter(h, star_ratings)]
 
             # Prepare pagination based on filtered results
             total_results = len(filtered_hotels)
             total_pages = (total_results - 1) // page_size + 1
-
             start_index = (current_page - 1) * page_size
             end_index = current_page * page_size
             paginated = filtered_hotels[start_index:end_index]
-        else:
-            # No extra (in-memory) filters: use SQL query with pagination
-            start_offset = (current_page - 1) * page_size
-            end_offset = current_page * page_size
-            result = controller.get_hotels_by_filters(city=city, all=True, start_and_end=(start_offset, end_offset))
-            if result:
-                total_results = result.get("amount", 0)
-                paginated = result.get("hotels", [])
-            else:
-                total_results = 0
-                paginated = []
 
-            add_average_price(paginated)
+        # Apply room type filter
+        if room_type:
+            filtered_hotels = [h for h in paginated if any(room['room_type'] in room_type for room in h['rooms'])]
 
-            # Apply sorting to the paginated list if requested
-            if sort_by_filter and paginated:
-                sort_type = sort_by_filter.get("sortBy")
-                if sort_type == "priceLowToHigh":
-                    paginated.sort(key=lambda h: float(h.get("price").replace(",", "")))
-                elif sort_type == "priceHighToLow":
-                    paginated.sort(key=lambda h: float(h.get("price").replace(",", "")), reverse=True)
-
+            # Prepare pagination based on filtered results
+            total_results = len(filtered_hotels)
             total_pages = (total_results - 1) // page_size + 1
+            start_index = (current_page - 1) * page_size
+            end_index = current_page * page_size
+            paginated = filtered_hotels[start_index:end_index]
+
+        # Apply sorting to the paginated list
+        if sort_by_filter:
+            if sort_by_filter == "priceLowToHigh":
+                paginated.sort(key=lambda h: float(h.get("price")))
+            elif sort_by_filter == "priceHighToLow":
+                paginated.sort(key=lambda h: float(h.get("price")), reverse=True)
+
+        total_pages = (total_results - 1) // page_size + 1
 
         # Build response payload
         response = {
